@@ -26,49 +26,94 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
 using Xunit.Abstractions;
-using static DotNetPlease.Helpers.FileSystemHelper;
 
-namespace DotNetPlease.Commands
+namespace DotNetPlease.Commands;
+
+// Tests that change the current directory for the process must not run in parallel.
+[Collection("cwd")]
+public class TestFixtureBase : IDisposable
 {
-    // Tests that change the current directory for the process must not run in parallel.
-    [Collection("cwd")]
-    public class TestFixtureBase : IDisposable
+    public TestFixtureBase(ITestOutputHelper testOutputHelper)
     {
-        protected readonly string WorkingDirectory;
+        MSBuildHelper.LocateMSBuild();
+        TestOutputReporter = new TestOutputReporter(testOutputHelper);
+        TestOutputConsole = new TestOutputConsole(testOutputHelper);
+        WorkingDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(WorkingDirectory);
+    }
 
-        protected readonly TestOutputReporter TestOutputReporter;
-        protected readonly TestOutputConsole TestOutputConsole;
+    //[Theory, CombinatorialData]
+    //public async Task Template_test(bool dryRun)
+    //{
+    //    // Arrange
 
-        public TestFixtureBase(ITestOutputHelper testOutputHelper)
+    //    await RunAndAssert(
+    //        new []{"command", "argument", "--option"},
+    //        dryRun,
+    //        assert: () =>
+    //        {
+    //            // Assert
+    //        });
+    //}
+
+    protected readonly string WorkingDirectory;
+    protected readonly TestOutputReporter TestOutputReporter;
+    protected readonly TestOutputConsole TestOutputConsole;
+
+    protected async Task RunAndAssert(IEnumerable<string> cmd, bool dryRun, Action assert)
+    {
+        if (dryRun)
         {
-            MSBuildHelper.LocateMSBuild();
-            TestOutputReporter = new TestOutputReporter(testOutputHelper);
-            TestOutputConsole = new TestOutputConsole(testOutputHelper);
-            WorkingDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(WorkingDirectory);
+            CreateSnapshot();
         }
 
-        private string? _snapshotDirectory;
+        await RunAndAssertSuccess((dryRun ? cmd.Append(CommandOptions.DryRun.Alias) : cmd).ToArray());
 
-        protected void CreateSnapshot()
+        if (dryRun)
         {
-            var files = GetFileNamesFromGlob("**/*", WorkingDirectory);
-            _snapshotDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-            foreach (var fileName in files)
+            VerifySnapshot();
+
+            return;
+        }
+
+        assert();
+    }
+
+    protected void CreateSnapshot()
+    {
+        var files = Directory.EnumerateFileSystemEntries(
+            WorkingDirectory,
+            searchPattern: "*",
+            SearchOption.AllDirectories);
+
+        _snapshotDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        foreach (var fileName in files)
+        {
+            var relativePath = GetRelativePath(fileName);
+            var newPath = Path.GetFullPath(relativePath, _snapshotDirectory);
+
+            if (File.Exists(fileName))
             {
-                if (File.Exists(fileName))
-                {
-                    var relativePath = GetRelativePath(fileName);
-                    var newPath = Path.GetFullPath(relativePath, _snapshotDirectory);
-                    Directory.CreateDirectory(Path.GetDirectoryName(newPath));
-                    File.Copy(fileName, newPath);
-                }
+                Directory.CreateDirectory(Path.GetDirectoryName(newPath));
+                File.Copy(fileName, newPath);
+            }
+            else if (Directory.Exists(fileName))
+            {
+                Directory.CreateDirectory(newPath);
             }
         }
+    }
 
-        protected void VerifySnapshot()
+    protected void VerifySnapshot()
+    {
+        if (_snapshotDirectory == null)
         {
-            if (_snapshotDirectory == null) return;
+            return;
+        }
+
+        try
+        {
             var expected = Hash(_snapshotDirectory);
             var actual = Hash(WorkingDirectory);
 
@@ -76,58 +121,98 @@ namespace DotNetPlease.Commands
 
             static Dictionary<string, byte[]> Hash(string rootDirectory)
             {
-                var files = GetFileNamesFromGlob("**/*", rootDirectory);
+                var files = Directory.EnumerateFileSystemEntries(
+                    rootDirectory,
+                    searchPattern: "*",
+                    SearchOption.AllDirectories);
+
                 var hasher = new SHA256Managed();
                 hasher.Initialize();
                 var result = new Dictionary<string, byte[]>();
+
                 foreach (var fileName in files)
                 {
                     var relativePath = Path.GetRelativePath(rootDirectory, fileName).ToLower();
-                    using var stream = File.OpenRead(fileName);
-                    result[relativePath] = hasher.ComputeHash(stream);
+
+                    if (File.Exists(fileName))
+                    {
+                        using var stream = File.OpenRead(fileName);
+                        result[relativePath] = hasher.ComputeHash(stream);
+                    }
+                    else if (Directory.Exists(fileName))
+                    {
+                        result[relativePath] = Array.Empty<byte>();
+                    }
                 }
 
                 return result;
             }
         }
-
-        protected string GetFullPath(string path) => Path.GetFullPath(path, WorkingDirectory);
-
-        protected string GetRelativePath(string path) => Path.GetRelativePath(WorkingDirectory, path);
-
-        protected async Task RunAndAssertSuccess(params string[] args)
+        finally
         {
-            var oldWorkingDirectory = Directory.GetCurrentDirectory();
-
-            try
-            {
-                Directory.SetCurrentDirectory(WorkingDirectory);
-
-                using var app = new App(
-                    sc =>
-                    {
-                        sc.Replace(new ServiceDescriptor(typeof(IReporter), TestOutputReporter));
-                        sc.Replace(new ServiceDescriptor(typeof(IConsole), TestOutputConsole));
-
-                        return sc;
-                    });
-
-                var exitCode = await app.ExecuteAsync(
-                    app.PreprocessArguments(args.Where(a => !string.IsNullOrEmpty(a)).ToArray()));
-
-                exitCode.Should().Be(0);
-            }
-            finally
-            {
-                Directory.SetCurrentDirectory(oldWorkingDirectory);
-            }
+            DeleteSnapshot();
         }
-
-        public void Dispose()
-        {
-            (TestOutputReporter as IDisposable)?.Dispose();
-        }
-
-        protected static string DryRunOption(bool dryRun) => dryRun ? CommandOptions.DryRun.Alias : "";
     }
+
+    protected void DeleteSnapshot()
+    {
+        if (_snapshotDirectory == null)
+        {
+            return;
+        }
+
+        Directory.Delete(_snapshotDirectory, recursive: true);
+        _snapshotDirectory = null;
+    }
+
+    protected string GetFullPath(string path)
+    {
+        return Path.GetFullPath(path, WorkingDirectory);
+    }
+
+    protected string GetRelativePath(string path)
+    {
+        return Path.GetRelativePath(WorkingDirectory, path);
+    }
+
+    protected async Task RunAndAssertSuccess(params string[] args)
+    {
+        var oldWorkingDirectory = Directory.GetCurrentDirectory();
+
+        try
+        {
+            Directory.SetCurrentDirectory(WorkingDirectory);
+
+            using var app = new App(
+                sc =>
+                {
+                    sc.Replace(new ServiceDescriptor(typeof(IReporter), TestOutputReporter));
+                    sc.Replace(new ServiceDescriptor(typeof(IConsole), TestOutputConsole));
+
+                    return sc;
+                });
+
+            var exitCode = await app.ExecuteAsync(
+                app.PreprocessArguments(args.Where(a => !string.IsNullOrEmpty(a)).ToArray()));
+
+            exitCode.Should().Be(0);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(oldWorkingDirectory);
+        }
+    }
+
+    protected static string DryRunOption(bool dryRun)
+    {
+        return dryRun ? CommandOptions.DryRun.Alias : "";
+    }
+
+    public void Dispose()
+    {
+        (TestOutputReporter as IDisposable)?.Dispose();
+        DeleteSnapshot();
+    }
+
+    private string? _snapshotDirectory;
 }

@@ -26,7 +26,9 @@ namespace DotNetPlease.Commands
     public class CleanupProjectFilesTests : TestFixtureBase
     {
         [Theory, CombinatorialData]
-        public async Task It_removes_files_that_are_excluded_with_pattern_when_AllowGlobs_is_set(bool allowGlobs, bool dryRun)
+        public async Task It_removes_files_that_are_excluded_with_pattern_when_AllowGlobs_is_set(
+            bool allowGlobs,
+            bool dryRun)
         {
             var solutionFileName = GetFullPath("Test.sln");
             CreateSolution(solutionFileName);
@@ -38,30 +40,22 @@ namespace DotNetPlease.Commands
             File.WriteAllText(excludedFileName, "{}");
             AddItemRemove(projectFileName, "Compile", "Excluded/**/*");
 
-            var args = new List<string> { "cleanup-project-files" };
-            
+            var cmd = new List<string> { "cleanup-project-files" };
+
             if (allowGlobs)
             {
-                args.Add("--allow-globs");
+                cmd.Add("--allow-globs");
             }
 
-            args.Add(DryRunOption(dryRun));
-
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess(args.ToArray());
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            File.Exists(excludedFileName).Should().Be(!allowGlobs);
+            await RunAndAssert(
+                cmd,
+                dryRun,
+                () => File.Exists(excludedFileName).Should().Be(!allowGlobs));
         }
 
         [Theory, CombinatorialData]
-        public async Task It_deletes_files_that_are_excluded_with_exact_filename_and_removes_the_Compile_item(bool dryRun)
+        public async Task It_deletes_files_that_are_excluded_with_exact_filename_and_removes_the_Compile_item(
+            bool dryRun)
         {
             var solutionFileName = GetFullPath("Test.sln");
             CreateSolution(solutionFileName);
@@ -73,24 +67,18 @@ namespace DotNetPlease.Commands
             File.WriteAllText(excludedFileName, "{}");
             AddItemRemove(projectFileName, "Compile", "Excluded/Junk.cs");
 
-            await RunAndAssertSuccess("cleanup-project-files", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                File.Exists(excludedFileName).Should().BeTrue();
-            }
-            else
-            {
-                File.Exists(excludedFileName).Should().BeFalse();
-                var project = LoadProjectFromFile(projectFileName);
-                var glob = new CompositeGlob(project.GetAllGlobs("Compile").Select(x => x.MsBuildGlob));
-                glob.IsMatch(excludedFileName).Should().BeFalse();
-            }
-
+            await RunAndAssert(
+                new[] { "cleanup-project-files" },
+                dryRun,
+                () =>
+                {
+                    File.Exists(excludedFileName).Should().BeFalse();
+                    var project = LoadProjectFromFile(projectFileName);
+                    var glob = new CompositeGlob(project.GetAllGlobs("Compile").Select(x => x.MsBuildGlob));
+                    glob.IsMatch(excludedFileName).Should().BeFalse();
+                });
         }
 
-        public CleanupProjectFilesTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
-        {
-        }
+        public CleanupProjectFilesTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper) { }
     }
 }

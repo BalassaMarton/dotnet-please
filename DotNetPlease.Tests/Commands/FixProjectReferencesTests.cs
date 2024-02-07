@@ -32,18 +32,14 @@ namespace DotNetPlease.Commands
             CreateSolution(solutionFileName);
             AddProjectToSolution(projectFileName, solutionFileName);
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess("fix-project-references", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            var projectReference = FindProjectReference(projectFileName, referencedProjectFileName);
-            projectReference.Should().BeNull();
+            await RunAndAssert(
+                new[] { "fix-project-references" },
+                dryRun,
+                () =>
+                {
+                    var projectReference = FindProjectReference(projectFileName, referencedProjectFileName);
+                    projectReference.Should().BeNull();
+                });
         }
 
         [Theory, CombinatorialData]
@@ -60,22 +56,16 @@ namespace DotNetPlease.Commands
             AddProjectToSolution(projectFileName, solutionFileName);
             AddProjectToSolution(actualReferencedProjectFileName, solutionFileName);
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess("fix-project-references", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            FindProjectReference(projectFileName, referencedProjectFileName).Should().BeNull();
-            FindProjectReference(projectFileName, actualReferencedProjectFileName).Should().NotBeNull();
+            await RunAndAssert(
+                new[] { "fix-project-references" },
+                dryRun,
+                () =>
+                {
+                    FindProjectReference(projectFileName, referencedProjectFileName).Should().BeNull();
+                    FindProjectReference(projectFileName, actualReferencedProjectFileName).Should().NotBeNull();
+                });
         }
 
-        public FixProjectReferencesTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
-        {
-        }
+        public FixProjectReferencesTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper) { }
     }
 }

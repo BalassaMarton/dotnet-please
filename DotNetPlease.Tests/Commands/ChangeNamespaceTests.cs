@@ -38,29 +38,25 @@ namespace DotNetPlease.Commands
                 CreateProject(projectFileName);
             }
 
-            if (dryRun) CreateSnapshot();
+            await RunAndAssert(
+                new[] { "change-namespace", "MorganStanley.OldNamespace", "NewNamespace" },
+                dryRun,
+                assert: () =>
+                {
+                    var newProjectFileNames = GetProjectsFromDirectory(WorkingDirectory, recursive: true)
+                        .Select(GetRelativePath)
+                        .ToList();
 
-            await RunAndAssertSuccess("change-namespace", "MorganStanley.OldNamespace", "NewNamespace", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            var newProjectFileNames = GetProjectsFromDirectory(WorkingDirectory, recursive: true)
-                .Select(GetRelativePath)
-                .ToList();
-            newProjectFileNames.Should()
-                .BeEquivalentTo(
-                    new List<string>
-                    {
-                        "NewNamespace.Alpha/NewNamespace.Alpha.csproj",
-                        "Bravo/NewNamespace.Bravo.csproj",
-                        "MorganStanley.OldNamespace.Charlie/Charlie.csproj" // this should not be renamed as the file name is what counts
-                    },
-                    opt => opt.CompareAsFileName());
-
+                    newProjectFileNames.Should()
+                        .BeEquivalentTo(
+                            new List<string>
+                            {
+                                "NewNamespace.Alpha/NewNamespace.Alpha.csproj",
+                                "Bravo/NewNamespace.Bravo.csproj",
+                                "MorganStanley.OldNamespace.Charlie/Charlie.csproj" // this should not be renamed as the file name is what counts
+                            },
+                            opt => opt.CompareAsFileName());
+                });
         }
 
         [Theory, CombinatorialData]
@@ -82,29 +78,25 @@ namespace DotNetPlease.Commands
                 AddProjectToSolution(projectFileName, solutionFileName);
             }
 
-            if (dryRun) CreateSnapshot();
+            await RunAndAssert(
+                new[] { "change-namespace", "MorganStanley.OldNamespace", "NewNamespace" },
+                dryRun,
+                assert: () =>
+                {
+                    var newProjectFileNames = GetProjectsFromDirectory(WorkingDirectory, recursive: true)
+                        .Select(GetRelativePath)
+                        .ToList();
 
-            await RunAndAssertSuccess("change-namespace", "MorganStanley.OldNamespace", "NewNamespace", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            var newProjectFileNames = GetProjectsFromDirectory(WorkingDirectory, recursive: true)
-                .Select(GetRelativePath)
-                .ToList();
-
-            newProjectFileNames.Should()
-                .BeEquivalentTo(
-                    new List<string>
-                    {
-                        "NewNamespace.Alpha/NewNamespace.Alpha.csproj",
-                        "Bravo/NewNamespace.Bravo.csproj",
-                        "MorganStanley.OldNamespace.Charlie/Charlie.csproj" // this should not be renamed as the file name is what counts
-                    },
-                    opt => opt.CompareAsFileName());
+                    newProjectFileNames.Should()
+                        .BeEquivalentTo(
+                            new List<string>
+                            {
+                                "NewNamespace.Alpha/NewNamespace.Alpha.csproj",
+                                "Bravo/NewNamespace.Bravo.csproj",
+                                "MorganStanley.OldNamespace.Charlie/Charlie.csproj" // this should not be renamed as the file name is what counts
+                            },
+                            opt => opt.CompareAsFileName());
+                });
         }
 
         public ChangeNamespaceTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)

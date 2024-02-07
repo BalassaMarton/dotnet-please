@@ -28,21 +28,17 @@ public class ExpandReferencesTests : TestFixtureBase
         var (_, targetProjectPath) = CreateSolutionWithSingleProject("Target", "Project1");
         AddPackageReference(targetProjectPath, "Package1", "1.0.0");
 
-        if (dryRun) CreateSnapshot();
+        await RunAndAssert(
+            new[] { "expand-references", "Source/Source.sln", "--workspace", "Target/Target.sln" },
+            dryRun,
+            () =>
+            {
+                var projectReference = FindProjectReference(targetProjectPath, sourceProjectPath);
+                projectReference.Should().NotBeNull();
 
-        await RunAndAssertSuccess("expand-references", "Source/Source.sln", "--workspace", "Target/Target.sln", DryRunOption(dryRun));
-
-        if (dryRun)
-        {
-            VerifySnapshot();
-            return;
-        }
-
-        var projectReference = FindProjectReference(targetProjectPath, sourceProjectPath);
-        projectReference.Should().NotBeNull();
-
-        var packageReference = FindPackageReference(targetProjectPath, "Package1");
-        packageReference.Should().BeNull();
+                var packageReference = FindPackageReference(targetProjectPath, "Package1");
+                packageReference.Should().BeNull();
+            });
     }
 
     [Theory, CombinatorialData]
@@ -52,18 +48,14 @@ public class ExpandReferencesTests : TestFixtureBase
         var (targetSlnPath, targetProjectPath) = CreateSolutionWithSingleProject("Target", "Project1");
         AddPackageReference(targetProjectPath, "Package1", "1.0.0");
 
-        if (dryRun) CreateSnapshot();
-
-        await RunAndAssertSuccess("expand-references", "Source/Source.sln", "--workspace", "Target/Target.sln", DryRunOption(dryRun));
-
-        if (dryRun)
-        {
-            VerifySnapshot();
-            return;
-        }
-
-        var projectsInSolution = GetProjectsFromSolution(targetSlnPath);
-        projectsInSolution.Should().Contain(sourceProjectPath);
+        await RunAndAssert(
+            new[] { "expand-references", "Source/Source.sln", "--workspace", "Target/Target.sln" },
+            dryRun,
+            () =>
+            {
+                var projectsInSolution = GetProjectsFromSolution(targetSlnPath);
+                projectsInSolution.Should().Contain(sourceProjectPath);
+            });
     }
 
     [Theory, CombinatorialData]
@@ -73,21 +65,14 @@ public class ExpandReferencesTests : TestFixtureBase
         var (targetSlnPath, targetProjectPath) = CreateSolutionWithSingleProject("Target", "Project1");
         AddAssemblyReference(targetProjectPath, "ClassLib1");
 
-        if (dryRun) CreateSnapshot();
-
-        await RunAndAssertSuccess("expand-references", "Source/Source.sln", "--workspace", "Target/Target.sln", DryRunOption(dryRun));
-
-        if (dryRun)
-        {
-            VerifySnapshot();
-            return;
-        }
-
-        var projectReference = FindProjectReference(targetProjectPath, sourceProjectPath);
-        projectReference.Should().NotBeNull();
-
-        var assemblyReference = FindAssemblyReference(targetProjectPath, "ClassLib1");
-        assemblyReference.Should().BeNull();
+        await RunAndAssert(
+            new[] { "expand-references", "Source/Source.sln", "--workspace", "Target/Target.sln" },
+            dryRun,
+            () =>
+            {
+                var assemblyReference = FindAssemblyReference(targetProjectPath, "ClassLib1");
+                assemblyReference.Should().BeNull();
+            });
     }
 
     [Theory, CombinatorialData]
@@ -97,23 +82,21 @@ public class ExpandReferencesTests : TestFixtureBase
         var (targetSlnPath, targetProjectPath) = CreateSolutionWithSingleProject("Target", "Project1");
         AddAssemblyReference(targetProjectPath, "ClassLib1");
 
-        if (dryRun) CreateSnapshot();
-
-        await RunAndAssertSuccess("expand-references", "Source/Source.sln", "--workspace", "Target/Target.sln", DryRunOption(dryRun));
-
-        if (dryRun)
-        {
-            VerifySnapshot();
-            return;
-        }
-
-        var projectsInSolution = GetProjectsFromSolution(targetSlnPath);
-        projectsInSolution.Should().Contain(sourceProjectPath);
+        await RunAndAssert(
+            new[] { "expand-references", "Source/Source.sln", "--workspace", "Target/Target.sln" },
+            dryRun,
+            () =>
+            {
+                var projectsInSolution = GetProjectsFromSolution(targetSlnPath);
+                projectsInSolution.Should().Contain(sourceProjectPath);
+            });
     }
 
     public ExpandReferencesTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper) { }
 
-    private (string solutionPath, string projectPath) CreateSolutionWithSingleProject(string solutionName, string projectName)
+    private (string solutionPath, string projectPath) CreateSolutionWithSingleProject(
+        string solutionName,
+        string projectName)
     {
         var solutionPath = GetFullPath($"{solutionName}/{solutionName}.sln");
         var projectPath = GetFullPath($"{solutionName}/{projectName}/{projectName}.csproj");

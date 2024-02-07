@@ -33,20 +33,16 @@ namespace DotNetPlease.Commands
             CreateSolution(solutionFileName);
             AddProjectToSolution(projectFileName, solutionFileName);
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess("find-stray-projects", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            TestOutputReporter.Messages
-                .Should().Contain(new TestOutputReporter.MessageItem("Misc/Stray/Stray.csproj", MessageType.Success));
-            TestOutputReporter.Messages
-                .Should().NotContain(new TestOutputReporter.MessageItem("Project1/Project1.csproj", MessageType.Success));
+            await RunAndAssert(
+                new[] { "find-stray-projects" }, 
+                dryRun,
+                () =>
+                {
+                    TestOutputReporter.Messages
+                        .Should().Contain(new TestOutputReporter.MessageItem("Misc/Stray/Stray.csproj", MessageType.Success));
+                    TestOutputReporter.Messages
+                        .Should().NotContain(new TestOutputReporter.MessageItem("Project1/Project1.csproj", MessageType.Success));
+                });
         }
 
         public FindStrayProjectsTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)

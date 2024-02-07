@@ -37,6 +37,7 @@ namespace DotNetPlease.Commands
             };
 
             var version = new NuGetVersion(1, 0, 0);
+
             foreach (var projectFileName in projectFileNames.Select(GetFullPath))
             {
                 CreateProject(projectFileName);
@@ -44,23 +45,19 @@ namespace DotNetPlease.Commands
                 AddPackageReference(projectFileName, "Example.Package", version.ToString());
             }
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess("consolidate-packages", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            foreach (var projectFileName in projectFileNames.Select(GetFullPath))
-            {
-                var project = LoadProjectFromFile(projectFileName);
-                var packageReference = FindPackageReference(project, "Example.Package");
-                packageReference.Should().NotBeNull();
-                packageReference!.GetMetadataValue("Version").Should().Be(version.ToString());
-            }
+            await RunAndAssert(
+                new[] { "consolidate-packages" },
+                dryRun,
+                () =>
+                {
+                    foreach (var projectFileName in projectFileNames.Select(GetFullPath))
+                    {
+                        var project = LoadProjectFromFile(projectFileName);
+                        var packageReference = FindPackageReference(project, "Example.Package");
+                        packageReference.Should().NotBeNull();
+                        packageReference!.GetMetadataValue("Version").Should().Be(version.ToString());
+                    }
+                });
         }
 
         [Theory, CombinatorialData]
@@ -81,6 +78,7 @@ namespace DotNetPlease.Commands
             CreateDirectoryBuildProps("Dependencies.props");
 
             var version = new NuGetVersion(1, 0, 0);
+
             foreach (var projectFileName in projectFileNames.Select(GetFullPath))
             {
                 CreateProject(projectFileName);
@@ -88,28 +86,24 @@ namespace DotNetPlease.Commands
                 AddPackageReference(projectFileName, "Example.Package", version.ToString());
             }
 
-            if (dryRun) CreateSnapshot();
+            await RunAndAssert(
+                new[] { "consolidate-packages", "--props", "Dependencies.props" },
+                dryRun,
+                () =>
+                {
+                    foreach (var projectFileName in projectFileNames.Select(GetFullPath))
+                    {
+                        var project = LoadProjectFromFile(projectFileName);
+                        var packageReference = FindPackageReference(project, "Example.Package");
+                        packageReference.Should().NotBeNull();
+                        var versionAttribute = packageReference!.Xml.Metadata.FirstOrDefault(x => x.Name == "Version");
+                        versionAttribute.Should().NotBeNull();
+                        versionAttribute!.Value.Should().Be("$(ExamplePackageVersion)");
+                    }
 
-            await RunAndAssertSuccess("consolidate-packages", "--props", "Dependencies.props", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            foreach (var projectFileName in projectFileNames.Select(GetFullPath))
-            {
-                var project = LoadProjectFromFile(projectFileName);
-                var packageReference = FindPackageReference(project, "Example.Package");
-                packageReference.Should().NotBeNull();
-                var versionAttribute = packageReference!.Xml.Metadata.FirstOrDefault(x => x.Name == "Version");
-                versionAttribute.Should().NotBeNull();
-                versionAttribute!.Value.Should().Be("$(ExamplePackageVersion)");
-            }
-
-            props = LoadProjectFromFile(propsFileName);
-            props.GetPropertyValue("ExamplePackageVersion").Should().Be("1.3.0");
+                    props = LoadProjectFromFile(propsFileName);
+                    props.GetPropertyValue("ExamplePackageVersion").Should().Be("1.3.0");
+                });
         }
 
         [Theory, CombinatorialData]
@@ -125,18 +119,14 @@ namespace DotNetPlease.Commands
 
             CreateDirectoryBuildProps("Dependencies.props");
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess("consolidate-packages", "--props", "Dependencies.props", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            props = LoadProjectFromFile(propsFileName);
-            props.GetPropertyValue("ExamplePackageVersion").Should().Be("1.2.3");
+            await RunAndAssert(
+                new[] { "consolidate-packages", "--props", "Dependencies.props" },
+                dryRun,
+                () =>
+                {
+                    props = LoadProjectFromFile(propsFileName);
+                    props.GetPropertyValue("ExamplePackageVersion").Should().Be("1.2.3");
+                });
         }
 
         [Theory, CombinatorialData]
@@ -152,19 +142,15 @@ namespace DotNetPlease.Commands
 
             CreateDirectoryBuildProps("Dependencies.props");
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess("consolidate-packages", "--props", "Dependencies.props", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            var packageReference = FindPackageReference(projectFileName, "Example.Package");
-            packageReference.Should().NotBeNull();
-            packageReference!.GetUnevaluatedMetadataValue("Version").Should().Be("$(DefinedVersion)");
+            await RunAndAssert(
+                new[] { "consolidate-packages", "--props", "Dependencies.props" },
+                dryRun,
+                () =>
+                {
+                    var packageReference = FindPackageReference(projectFileName, "Example.Package");
+                    packageReference.Should().NotBeNull();
+                    packageReference!.GetUnevaluatedMetadataValue("Version").Should().Be("$(DefinedVersion)");
+                });
         }
 
         [Theory, CombinatorialData]
@@ -181,34 +167,30 @@ namespace DotNetPlease.Commands
 
             CreateDirectoryBuildProps("Dependencies.props");
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess("consolidate-packages", "--explicit", "--force", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            var packageReference = FindPackageReference(projectFileName, "Example.Package");
-            packageReference.Should().NotBeNull();
-            packageReference!.GetUnevaluatedMetadataValue("Version").Should().Be("1.2.3");
+            await RunAndAssert(
+                new[] { "consolidate-packages", "--explicit", "--force" },
+                dryRun,
+                () =>
+                {
+                    var packageReference = FindPackageReference(projectFileName, "Example.Package");
+                    packageReference.Should().NotBeNull();
+                    packageReference!.GetUnevaluatedMetadataValue("Version").Should().Be("1.2.3");
+                });
         }
 
         private void CreateDirectoryBuildProps(params string[] imports)
         {
             var fileName = GetFullPath("Directory.Build.props");
             var project = new Project();
+
             foreach (var import in imports)
             {
                 project.Xml.AddImport(import);
             }
+
             project.Save(fileName);
         }
 
-        public ConsolidatePackagesTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
-        {
-        }
+        public ConsolidatePackagesTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper) { }
     }
 }

@@ -31,18 +31,14 @@ namespace DotNetPlease.Commands
             Directory.CreateDirectory(projectDirectory + "/bin");
             Directory.CreateDirectory(projectDirectory + "/obj");
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess("remove-junk", "--bin", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            Directory.Exists(projectDirectory + "/bin").Should().BeFalse();
-            Directory.Exists(projectDirectory + "/obj").Should().BeFalse();
+            await RunAndAssert(
+                new[] { "remove-junk", "--bin" },
+                dryRun,
+                () =>
+                {
+                    Directory.Exists(projectDirectory + "/bin").Should().BeFalse();
+                    Directory.Exists(projectDirectory + "/obj").Should().BeFalse();
+                });
         }
 
         [Theory, CombinatorialData]
@@ -73,20 +69,14 @@ namespace DotNetPlease.Commands
                 File.WriteAllText($"{projectDirectory}/obj/baz.txt", "...");
             }
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess("remove-junk", "--bin", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            foreach (var directory in directoriesToRemove)
-            {
-                Directory.Exists(directory).Should().BeFalse();
-            }
+            await RunAndAssert(new[] { "remove-junk", "--bin" }, dryRun,
+                () =>
+                {
+                    foreach (var directory in directoriesToRemove)
+                    {
+                        Directory.Exists(directory).Should().BeFalse();
+                    }
+                });
         }
 
         [Theory, CombinatorialData]
@@ -99,22 +89,16 @@ namespace DotNetPlease.Commands
             File.WriteAllText(projectDirectory + "/assets/bin/readme.txt", "...");
             Directory.CreateDirectory(WorkingDirectory + "/bin");
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess("remove-junk", "--bin", DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            Directory.Exists(projectDirectory + "/assets/bin").Should().BeTrue();
-            Directory.Exists(WorkingDirectory + "/bin").Should().BeTrue();
+            await RunAndAssert(
+                new[] { "remove-junk", "--bin" },
+                dryRun,
+                () =>
+                {
+                    Directory.Exists(projectDirectory + "/assets/bin").Should().BeTrue();
+                    Directory.Exists(WorkingDirectory + "/bin").Should().BeTrue();
+                });
         }
 
-        public RemoveJunkTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
-        {
-        }
+        public RemoveJunkTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper) { }
     }
 }

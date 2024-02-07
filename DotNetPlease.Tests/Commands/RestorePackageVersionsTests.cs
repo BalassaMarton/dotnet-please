@@ -37,13 +37,14 @@ namespace DotNetPlease.Commands
             AddPackageReference(projectFileName, packageName, version: null);
 
             var packageVersionsFileName = GetFullPath("Dependencies.props");
+
             var centralVersion = versionSpec switch
             {
                 VersionSpec.Value => "1.2.3",
                 VersionSpec.Expression => "$(PackageVersionExpression)",
                 _ => throw new ArgumentOutOfRangeException(nameof(versionSpec), versionSpec, null)
             };
-            
+
             File.WriteAllText(
                 packageVersionsFileName,
                 $@"
@@ -54,27 +55,18 @@ namespace DotNetPlease.Commands
                 </Project>
             ");
 
-            if (dryRun) CreateSnapshot();
+            await RunAndAssert(
+                new[] { "restore-package-versions", "Dependencies.props", "--workspace", "Project1/Project1.csproj" },
+                dryRun,
+                () =>
+                {
+                    var project = LoadProjectFromFile(projectFileName);
 
-            await RunAndAssertSuccess(
-                "restore-package-versions",
-                "Dependencies.props",
-                "--workspace",
-                "Project1/Project1.csproj",
-                DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            var project = LoadProjectFromFile(projectFileName);
-
-            project.Xml.Items.Single(i => i.ItemType == "PackageReference" && i.Include == packageName)
-                .GetMetadataValue("Version")
-                .Should()
-                .Be(centralVersion);
+                    project.Xml.Items.Single(i => i.ItemType == "PackageReference" && i.Include == packageName)
+                        .GetMetadataValue("Version")
+                        .Should()
+                        .Be(centralVersion);
+                });
         }
 
         public enum VersionSpec
@@ -83,8 +75,6 @@ namespace DotNetPlease.Commands
             Expression
         }
 
-        public RestorePackageVersionsTests([NotNull] ITestOutputHelper testOutputHelper) : base(testOutputHelper)
-        {
-        }
+        public RestorePackageVersionsTests([NotNull] ITestOutputHelper testOutputHelper) : base(testOutputHelper) { }
     }
 }

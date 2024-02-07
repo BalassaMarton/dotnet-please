@@ -31,16 +31,19 @@ namespace DotNetPlease.Commands
         {
             var projectFileName = GetFullPath("Project1/Project1.csproj");
             var packageName = "Example.Package";
+
             var referencedVersion = versionSpec switch
             {
                 VersionSpec.Same => "1.2.3",
                 VersionSpec.Expression => "$(VersionExpression)",
                 _ => throw new ArgumentOutOfRangeException(nameof(versionSpec), versionSpec, null)
             };
+
             CreateProject(projectFileName);
             AddPackageReference(projectFileName, packageName, referencedVersion);
 
             var packageVersionsFileName = GetFullPath("Dependencies.props");
+
             File.WriteAllText(
                 packageVersionsFileName,
                 $@"
@@ -48,57 +51,51 @@ namespace DotNetPlease.Commands
                 </Project>
             ");
 
-            if (dryRun) CreateSnapshot();
+            await RunAndAssert(
+                new[] { "pull-package-versions", "Dependencies.props", "--workspace", "Project1/Project1.csproj" },
+                dryRun,
+                () =>
+                {
+                    var shouldMoveVersion = versionSpec != VersionSpec.Expression;
+                    var project = LoadProjectFromFile(projectFileName);
+                    var packageVersions = LoadProjectFromFile(packageVersionsFileName);
 
-            await RunAndAssertSuccess(
-                "pull-package-versions",
-                "Dependencies.props",
-                "--workspace",
-                "Project1/Project1.csproj",
-                DryRunOption(dryRun));
+                    if (shouldMoveVersion)
+                    {
+                        project.Xml.Items
+                            .Single(i => i.ItemType == "PackageReference" && i.Include == packageName)
+                            .GetMetadataValue("Version")
+                            .Should()
+                            .BeNull();
 
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
+                        packageVersions.Xml.Items
+                            .Single(i => i.ItemType == "PackageVersion" && i.Include == packageName)
+                            .Metadata
+                            .Single(m => m.Name == "Version")
+                            .Value
+                            .Should()
+                            .Be(referencedVersion);
+                    }
+                    else
+                    {
+                        project.Xml.Items
+                            .Single(i => i.ItemType == "PackageReference" && i.Include == packageName)
+                            .GetMetadataValue("Version")
+                            .Should()
+                            .Be(referencedVersion);
 
-            var shouldMoveVersion = versionSpec != VersionSpec.Expression;
-            var project = LoadProjectFromFile(projectFileName);
-            var packageVersions = LoadProjectFromFile(packageVersionsFileName);
-
-            if (shouldMoveVersion)
-            {
-                project.Xml.Items
-                    .Single(i => i.ItemType == "PackageReference" && i.Include == packageName)
-                    .GetMetadataValue("Version")
-                    .Should().BeNull();
-
-                packageVersions.Xml.Items
-                    .Single(i => i.ItemType == "PackageVersion" && i.Include == packageName)
-                    .Metadata
-                    .Single(m => m.Name == "Version")
-                    .Value
-                    .Should().Be(referencedVersion);
-            }
-            else
-            {
-                project.Xml.Items
-                    .Single(i => i.ItemType == "PackageReference" && i.Include == packageName)
-                    .GetMetadataValue("Version")
-                    .Should().Be(referencedVersion);
-
-                packageVersions.Xml.Items
-                    .Where(i => i.ItemType == "PackageVersion" && i.Include == packageName)
-                    .Should().BeEmpty();
-            }
+                        packageVersions.Xml.Items
+                            .Where(i => i.ItemType == "PackageVersion" && i.Include == packageName)
+                            .Should()
+                            .BeEmpty();
+                    }
+                });
         }
 
         [Theory]
         [CombinatorialData]
         public async Task It_updates_the_central_version_if_needed(
-            [CombinatorialValues(VersionSpec.Same, VersionSpec.Expression)]
-            VersionSpec centralVersionSpec,
+            [CombinatorialValues(VersionSpec.Same, VersionSpec.Expression)] VersionSpec centralVersionSpec,
             VersionSpec referencedVersionSpec,
             bool update,
             bool dryRun)
@@ -109,6 +106,7 @@ namespace DotNetPlease.Commands
                 VersionSpec.Expression => "$(ExamplePackageVersion)",
                 _ => throw new ArgumentOutOfRangeException(nameof(centralVersionSpec), centralVersionSpec, null)
             };
+
             var referencedVersion = referencedVersionSpec switch
             {
                 VersionSpec.Same => centralVersion,
@@ -123,6 +121,7 @@ namespace DotNetPlease.Commands
             AddPackageReference(projectFileName, "Example.Package", referencedVersion);
 
             var packageVersionsFileName = GetFullPath("Dependencies.props");
+
             File.WriteAllText(
                 packageVersionsFileName,
                 $@"
@@ -133,41 +132,38 @@ namespace DotNetPlease.Commands
                 </Project>
             ");
 
-            if (dryRun) CreateSnapshot();
+            await RunAndAssert(
+                new[]
+                {
+                    "pull-package-versions",
+                    "Dependencies.props",
+                    update ? "--update" : "",
+                    "--workspace",
+                    "Project1/Project1.csproj"
+                },
+                dryRun,
+                () =>
+                {
+                    var expectedVersion =
+                        update
+                        && centralVersionSpec != VersionSpec.Expression
+                        && referencedVersionSpec == VersionSpec.Higher
+                            ? referencedVersion
+                            : centralVersion;
 
-            await RunAndAssertSuccess(
-                "pull-package-versions",
-                "Dependencies.props",
-                update ? "--update" : "",
-                "--workspace",
-                "Project1/Project1.csproj",
-                DryRunOption(dryRun));
+                    var packageVersions = LoadProjectFromFile(packageVersionsFileName);
 
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            var expectedVersion =
-                update
-                && centralVersionSpec != VersionSpec.Expression
-                && referencedVersionSpec == VersionSpec.Higher
-                    ? referencedVersion
-                    : centralVersion;
-
-            var packageVersions = LoadProjectFromFile(packageVersionsFileName);
-            packageVersions.Xml.Items
-                .Single(i => i.ItemType == "PackageVersion" && i.Include == "Example.Package")
-                .Metadata
-                .Single(m => m.Name == "Version")
-                .Value
-                .Should().Be(expectedVersion);
+                    packageVersions.Xml.Items
+                        .Single(i => i.ItemType == "PackageVersion" && i.Include == "Example.Package")
+                        .Metadata
+                        .Single(m => m.Name == "Version")
+                        .Value
+                        .Should()
+                        .Be(expectedVersion);
+                });
         }
 
-        public PullPackageVersionsTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
-        {
-        }
+        public PullPackageVersionsTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper) { }
 
         public enum VersionSpec
         {

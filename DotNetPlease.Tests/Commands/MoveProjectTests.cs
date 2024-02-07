@@ -34,28 +34,21 @@ namespace DotNetPlease.Commands
             var originalFullPath = GetFullPath(originalRelativePath);
             CreateProject(originalFullPath);
 
-            var newRelativePath = moveOutsideOfRootDirectory 
+            var newRelativePath = moveOutsideOfRootDirectory
                 ? $"../{Guid.NewGuid()}/NewSolution/NewProjectDirectory/NewProjectName.csproj"
                 : "NewProjectDirectory/NewProjectName.csproj";
+
             var newFullPath = GetFullPath(newRelativePath);
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess(
-                "move-project",
-                originalRelativePath,
-                newRelativePath,
-                DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            File.Exists(newFullPath).Should().BeTrue();
-            File.Exists(originalFullPath).Should().BeFalse();
-            Directory.Exists(Path.GetDirectoryName(originalFullPath)).Should().BeFalse();
+            await RunAndAssert(
+                new[] { "move-project", originalRelativePath, newRelativePath },
+                dryRun,
+                () =>
+                {
+                    File.Exists(newFullPath).Should().BeTrue();
+                    File.Exists(originalFullPath).Should().BeFalse();
+                    Directory.Exists(Path.GetDirectoryName(originalFullPath)).Should().BeFalse();
+                });
         }
 
         [Theory, CombinatorialData]
@@ -67,31 +60,27 @@ namespace DotNetPlease.Commands
             var originalFullPath = GetFullPath(originalRelativePath);
             CreateProject(originalFullPath);
             AddProjectToSolution(originalFullPath, solutionFileName);
+
             var newRelativePath = moveOutsideOfRootDirectory
                 ? $"../{Guid.NewGuid()}/NewSolution/NewProjectDirectory/NewProjectName.csproj"
                 : "NewProjectDirectory/NewProjectName.csproj";
+
             var newFullPath = GetFullPath(newRelativePath);
 
-            if (dryRun) CreateSnapshot();
+            await RunAndAssert(
+                new[] { "move-project", originalRelativePath, newRelativePath },
+                dryRun,
+                () =>
+                {
+                    var solution = LoadAndValidateSolution(solutionFileName);
+                    var project = solution.ProjectsInOrder.FirstOrDefault(p => IsSamePath(p.AbsolutePath, newFullPath));
+                    project.Should().NotBeNull();
 
-            await RunAndAssertSuccess(
-                "move-project",
-                originalRelativePath,
-                newRelativePath,
-                DryRunOption(dryRun));
+                    var oldProject =
+                        solution.ProjectsInOrder.FirstOrDefault(p => IsSamePath(p.AbsolutePath, originalFullPath));
 
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            var solution = LoadAndValidateSolution(solutionFileName);
-            var project = solution.ProjectsInOrder.FirstOrDefault(p => IsSamePath(p.AbsolutePath, newFullPath));
-            project.Should().NotBeNull();
-            var oldProject =
-                solution.ProjectsInOrder.FirstOrDefault(p => IsSamePath(p.AbsolutePath, originalFullPath));
-            oldProject.Should().BeNull();
+                    oldProject.Should().BeNull();
+                });
         }
 
         [Theory, CombinatorialData]
@@ -101,36 +90,28 @@ namespace DotNetPlease.Commands
             var originalFullPath = GetFullPath(originalRelativePath);
             CreateProject(originalFullPath);
             var originalReferencePath = "OtherProject/OtherProject.csproj";
-                var referenceFullPath = GetFullPath(originalReferencePath);
+            var referenceFullPath = GetFullPath(originalReferencePath);
             CreateProject(referenceFullPath);
             AddProjectReference(originalFullPath, referenceFullPath);
             AddProjectReference(referenceFullPath, originalFullPath);
+
             var newRelativePath = moveOutsideOfRootDirectory
                 ? $"../{Guid.NewGuid()}/NewSolution/NewProjectDirectory/NewProjectName.csproj"
                 : "NewProjectDirectory/NewProjectName.csproj";
+
             var newFullPath = GetFullPath(newRelativePath);
 
-            if (dryRun) CreateSnapshot();
-
-            await RunAndAssertSuccess(
-                "move-project",
-                originalRelativePath,
-                newRelativePath,
-                DryRunOption(dryRun));
-
-            if (dryRun)
-            {
-                VerifySnapshot();
-                return;
-            }
-
-            FindProjectReference(newFullPath, referenceFullPath).Should().NotBeNull();
-            FindProjectReference(referenceFullPath, newFullPath).Should().NotBeNull();
-            FindProjectReference(referenceFullPath, originalFullPath).Should().BeNull();
+            await RunAndAssert(
+                new[] { "move-project", originalRelativePath, newRelativePath },
+                dryRun,
+                () =>
+                {
+                    FindProjectReference(newFullPath, referenceFullPath).Should().NotBeNull();
+                    FindProjectReference(referenceFullPath, newFullPath).Should().NotBeNull();
+                    FindProjectReference(referenceFullPath, originalFullPath).Should().BeNull();
+                });
         }
 
-        public MoveProjectTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
-        {
-        }
+        public MoveProjectTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper) { }
     }
 }
